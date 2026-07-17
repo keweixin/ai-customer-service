@@ -1,0 +1,86 @@
+# ============================================================
+# Docker 构建忽略清单
+# 这些文件/目录不会进构建上下文,减小镜像体积、加速构建、防敏感信息泄露
+# ============================================================
+
+# --- 版本控制 ---
+.git
+.gitignore
+.gitattributes
+
+# --- Python 缓存与构建产物 ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# --- 虚拟环境 ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- 测试与覆盖率(生产镜像不需要) ---
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+coverage.xml
+*.cover
+tests/
+
+# --- 类型检查/格式化缓存 ---
+.mypy_cache/
+.ruff_cache/
+
+# --- 敏感信息(绝不进镜像) ---
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets/
+
+# --- 文档(生产镜像不需要,减小体积) ---
+*.md
+docs/
+
+# --- IDE / 编辑器 ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# --- 数据库本地文件 ---
+*.db
+*.sqlite3
+pgdata/
+
+# --- Docker 自身 ---
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.override.yml
+docker-compose.prod.yml
+
+# --- 日志 ---
+logs/
+*.log

@@ -1,0 +1,33 @@
+# ============================================================
+# AI 客服系统 - 本地开发数据库
+# 启动:docker compose up -d
+# 关闭:docker compose down(保留数据)
+# 重置:docker compose down -v(删数据卷)
+# ============================================================
+# 选用 pgvector/pgvector:pg15 镜像:官方 Postgres 15 预装 pgvector 扩展,
+# 省去手动编译安装向量扩展的步骤,开箱即用做 RAG 向量检索。
+# ============================================================
+services:
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: aics-postgres
+    environment:
+      POSTGRES_USER: aics
+      POSTGRES_PASSWORD: change_me_in_production
+      POSTGRES_DB: ai_customer_service
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # 健康检查:应用层(pool_pre_ping)之外再加一道容器层探活,
+    # 便于 docker compose wait / CI 中等待数据库就绪。
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aics"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # 生产环境建议追加 restart 策略与资源限制;此处为本地开发最小配置。
+    restart: unless-stopped
+
+volumes:
+  pgdata:
