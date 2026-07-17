@@ -11,8 +11,6 @@
   入口(uvicorn / pytest / alembic)加载时出现父包解析歧义。
 """
 
-from __future__ import annotations
-
 from typing import AsyncGenerator
 
 from fastapi import Depends, Header

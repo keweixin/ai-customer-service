@@ -8,8 +8,6 @@
 - ``api_router`` 作为对外唯一出口,``main.py`` 只需 include 一次。
 """
 
-from __future__ import annotations
-
 from fastapi import APIRouter
 
 from app.api.v1 import admin, auth, chat, knowledge

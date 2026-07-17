@@ -15,6 +15,13 @@ from typing import Literal
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# 在任何 Settings 类初始化前加载 .env,确保子配置类能读到环境变量。
+# 为什么放这里:各 *Config 类在 import 期就可能被实例化(如 get_settings),
+# 若 .env 未加载,password/database_url 等字段会是空值,导致连接失败。
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 class AppConfig(BaseSettings):
     """应用级配置(运行环境、监听地址、日志级别)。"""
@@ -153,21 +160,18 @@ class CORSConfig(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    origins: list[str] = Field(
-        default_factory=lambda: ["http://localhost:5173"],
+    # 用 str 接收原始值,避免 pydantic-settings 对 list 字段强制 JSON 解析。
+    # .env 里是逗号分隔字符串(如 "http://a,http://b"),不是 JSON 数组。
+    origins_raw: str = Field(
+        default="http://localhost:5173",
         alias="CORS_ORIGINS",
         description="允许的前端来源,逗号分隔",
     )
 
-    @field_validator("origins", mode="before")
-    @classmethod
-    def _split_origins(cls, v: object) -> list[str]:
-        """支持 .env 中逗号分隔字符串,自动拆分为列表。"""
-        if isinstance(v, str):
-            return [o.strip() for o in v.split(",") if o.strip()]
-        if isinstance(v, (list, tuple)):
-            return [str(o).strip() for o in v if str(o).strip()]
-        raise TypeError(f"CORS_ORIGINS 无法解析: {v!r}")
+    @property
+    def origins(self) -> list[str]:
+        """返回拆分后的来源列表。"""
+        return [o.strip() for o in self.origins_raw.split(",") if o.strip()]
 
 
 class RateLimitConfig(BaseSettings):

@@ -10,8 +10,6 @@
   路由层只做参数校验与权限控制。
 """
 
-from __future__ import annotations
-
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -25,6 +23,7 @@ from app.api.deps import (
 )
 from app.core.logging import get_logger
 from app.models.user import User
+from app.schemas.knowledge import ChunkResponse, DocumentListResponse, DocumentResponse, DocumentUpload, SearchRequest
 
 logger = get_logger(__name__)
 
@@ -37,7 +36,7 @@ router = APIRouter(prefix="/knowledge", tags=["knowledge"])
     summary="上传知识库文档",
 )
 async def upload_document(
-    payload,  # DocumentUpload
+    payload: DocumentUpload,
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
     rag_service=Depends(get_rag_service),
@@ -47,10 +46,6 @@ async def upload_document(
     RagService 负责:文本抽取 -> 切块 -> embedding -> 落库(含向量)。
     返回 DocumentResponse,前端据此展示上传结果与切片数。
     """
-    from app.schemas.knowledge import DocumentResponse, DocumentUpload
-
-    payload: DocumentUpload = payload  # type: ignore[no-redef]
-
     document = await rag_service.upload_document(payload)
     await db.commit()
 
@@ -78,7 +73,6 @@ async def list_documents(
     只返回文档元信息,不返回向量/切片内容,避免响应过大。
     """
     from app.repositories.document_repository import DocumentRepository
-    from app.schemas.knowledge import DocumentListResponse
 
     repo = DocumentRepository(db)
     documents = await repo.list_all(limit=limit, offset=offset)
@@ -118,7 +112,7 @@ async def delete_document(
     summary="检索测试(返回 top-k 切片)",
 )
 async def search(
-    payload,  # SearchRequest {query}
+    payload: SearchRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     rag_service=Depends(get_rag_service),
@@ -128,10 +122,6 @@ async def search(
     供前端"猜你想问"或管理员验证知识库召回质量使用。
     检索参数(top_k / min_similarity)走 RagService 默认值,即 config.rag。
     """
-    from app.schemas.knowledge import ChunkResponse, SearchRequest
-
-    payload: SearchRequest = payload  # type: ignore[no-redef]
-
     chunks = await rag_service.retrieve(query=payload.query)
     # 序列化每个切片;model_validate 兼容 ORM 对象
     result = [

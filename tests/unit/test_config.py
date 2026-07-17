@@ -238,8 +238,8 @@ class TestCORSConfig:
     """
 
     def test_json_array_parsed_to_list(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """CORS_ORIGINS 传 JSON 数组字符串应解析为列表。"""
-        monkeypatch.setenv("CORS_ORIGINS", '["http://a.com","http://b.com"]')
+        """CORS_ORIGINS 逗号分隔字符串应解析为列表。"""
+        monkeypatch.setenv("CORS_ORIGINS", "http://a.com,http://b.com")
         from app.config import CORSConfig, reset_settings
 
         reset_settings()
@@ -247,8 +247,8 @@ class TestCORSConfig:
         assert cfg.origins == ["http://a.com", "http://b.com"]
 
     def test_single_origin_json_array(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """单个 origin 用 JSON 数组包裹也应解析为单元素列表。"""
-        monkeypatch.setenv("CORS_ORIGINS", '["http://localhost:5173"]')
+        """单个 origin 也应解析为单元素列表。"""
+        monkeypatch.setenv("CORS_ORIGINS", "http://localhost:5173")
         from app.config import CORSConfig, reset_settings
 
         reset_settings()
@@ -269,17 +269,16 @@ class TestCORSConfig:
     def test_split_origins_validator_handles_list_input(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """_split_origins validator 能处理 list 输入(JSON 数组带空白)。
+        """origins property 能 strip 元素两端空白。
 
-        字段用 alias=CORS_ORIGINS 且未开 populate_by_name,故用 env 传 JSON
-        数组验证 validator 对元素的 strip 规整。
+        逗号分隔字符串带空格,property 应 strip 每个元素。
         """
-        monkeypatch.setenv("CORS_ORIGINS", '["http://a.com"," http://b.com "]')
+        monkeypatch.setenv("CORS_ORIGINS", "http://a.com, http://b.com ")
         from app.config import CORSConfig, reset_settings
 
         reset_settings()
         cfg = CORSConfig()
-        # validator 应 strip 每个元素的两端空白
+        # property 应 strip 每个元素的两端空白
         assert cfg.origins == ["http://a.com", "http://b.com"]
 
 

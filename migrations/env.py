@@ -43,11 +43,23 @@ def _get_database_url() -> str:
         postgresql+asyncpg:// -> postgresql+psycopg2://
     这样同一份环境变量同时服务应用(异步)与迁移(同步),无需维护两套连接串。
     """
+    # 先尝试环境变量,再从 .env 加载(alembic 不自动加载 .env)
     url = os.environ.get("DATABASE_URL")
+    if not url:
+        try:
+            from dotenv import load_dotenv
+            # 从项目根目录(alembic.ini 所在目录)读 .env
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            dotenv_path = os.path.join(project_root, ".env")
+            if os.path.exists(dotenv_path):
+                load_dotenv(dotenv_path)
+                url = os.environ.get("DATABASE_URL")
+        except ImportError:
+            pass
     if not url:
         raise RuntimeError(
             "DATABASE_URL 环境变量未设置,Alembic 无法连接数据库。"
-            "请在 .env 中配置 DATABASE_URL。"
+            "请在 .env 中配置 DATABASE_URL,或安装 python-dotenv。"
         )
     return url.replace("+asyncpg", "+psycopg2")
 

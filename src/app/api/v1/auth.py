@@ -12,8 +12,6 @@
   函数内 import 保证路由文件可在任何阶段被 import 而不报错。
 """
 
-from __future__ import annotations
-
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 

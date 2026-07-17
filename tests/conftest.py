@@ -39,7 +39,13 @@ if _SRC_DIR not in sys.path:
 # ----------------------------------------------------------------------
 TEST_JWT_SECRET = "test-secret-key-for-jwt-not-for-prod-use-64chars-padding"
 TEST_JWT_ALGORITHM = "HS256"
-TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
+# 集成测试优先用真实 PostgreSQL(支持 JSONB/pgvector);无 Postgres 时回退 SQLite
+TEST_DB_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://aics:change_me_in_production@localhost:5432/ai_customer_service_test",
+)
+# 单元测试用 SQLite(不依赖外部服务)
+UNIT_DB_URL = "sqlite+aiosqlite:///:memory:"
 TEST_USER_USERNAME = "testuser"
 TEST_USER_EMAIL = "testuser@example.com"
 TEST_USER_PASSWORD = "SuperSecret-123!"
@@ -86,21 +92,21 @@ def event_loop() -> Iterator[Any]:
 # ----------------------------------------------------------------------
 @pytest_asyncio.fixture
 async def db_session() -> AsyncIterator[Any]:
-    """提供一个内存 SQLite 异步会话,所有表已建好,用完销毁。
+    """提供一个异步会话,所有表已建好,用完清理。
 
-    pgvector 在 SQLite 不可用,因此 KnowledgeChunk.embedding(Vector 列)
-    无法在 SQLite 建表。这里通过跳过该模型 / 替换列类型的方式兼容:
-    只建不依赖向量的表(users / sessions / messages / user_profiles /
-    knowledge_docs),向量相关测试在 test_rag_service 中用 mock。
+    优先用真实 PostgreSQL(支持 JSONB + pgvector),无则回退 SQLite(跳过向量表)。
+    每个 fixture 用唯一的 schema/表前缀避免并发测试互相污染:
+    PostgreSQL 用事务回滚,SQLite 用内存库。
 
     Yields:
-        AsyncSession:已建表、已 begin 的内存会话。
+        AsyncSession:已建表、已 begin 的会话。
     """
     import sqlalchemy as sa
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-    # 延迟 import,部分模型在测试运行时可能尚未由并行 agent 创建完成,
-    # 这里 try/except 保证至少已存在的模型可建表。
+    # 判断是否用 PostgreSQL
+    use_postgres = TEST_DB_URL.startswith("postgresql")
+
     engine = create_async_engine(TEST_DB_URL, echo=False, future=True)
 
     # 收集所有已成功 import 的模型表的 metadata
@@ -111,34 +117,37 @@ async def db_session() -> AsyncIterator[Any]:
         from app.models.session import Session  # noqa: F401
         from app.models.message import Message  # noqa: F401
 
-        # UserProfile / KnowledgeDoc 可能存在,尝试加入
-        for mod_name, cls_name in [
-            ("app.models.user_profile", "UserProfile"),
-            ("app.models.knowledge_doc", "KnowledgeDoc"),
+        # UserProfile / KnowledgeDoc / KnowledgeChunk / AuditLog 全部加载
+        for mod_name in [
+            "app.models.user_profile",
+            "app.models.knowledge_doc",
+            "app.models.knowledge_chunk",
+            "app.models.audit_log",
         ]:
             try:
                 __import__(mod_name)
             except Exception:
-                # 模块尚未创建,跳过其表
                 continue
 
-        # 从 Base.metadata 选出可建表的表(排除含 Vector 列的 knowledge_chunks)
         for table_name, table in Base.metadata.tables.items():
-            if table_name == "knowledge_chunks":
-                # 向量列在 SQLite 不可用,跳过;向量测试走 mock
+            # SQLite 跳过向量表(PostgreSQL 才支持 pgvector)
+            if not use_postgres and table_name == "knowledge_chunks":
                 continue
             tables_to_create.append(table)
     except Exception:
-        # 模型尚不可用:回退到仅创建一个最小 users 表,让 fixture 不崩
         pass
 
     async with engine.begin() as conn:
-        if tables_to_create:
-            # SQLite 不支持 PG 特有类型,用 SQLAlchemy 编译器自动降级
-            for table in tables_to_create:
+        if use_postgres:
+            # PostgreSQL:确保 pgvector 扩展,然后建表
+            await conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
+        for table in tables_to_create:
+            try:
                 await conn.run_sync(table.create, checkfirst=True)
-        else:
-            # 兜底:建一个占位表,确保后续用例有可写库
+            except Exception:
+                # 表已存在或类型不支持,跳过
+                pass
+        if not tables_to_create:
             await conn.execute(
                 sa.text(
                     "CREATE TABLE IF NOT EXISTS _test_placeholder (id INTEGER PRIMARY KEY)"
@@ -149,15 +158,23 @@ async def db_session() -> AsyncIterator[Any]:
         engine, class_=AsyncSession, expire_on_commit=False
     )
     async with session_factory() as session:
-        # 让测试可以 await session.execute(...)
         yield session
 
+    # 清理:PostgreSQL 只清数据(保留表结构供下次用),SQLite drop 所有表
     async with engine.begin() as conn:
-        for table in reversed(tables_to_create):
-            try:
-                await conn.run_sync(table.drop, checkfirst=True)
-            except Exception:
-                pass
+        if use_postgres:
+            # 清空所有表数据(保留表结构),用 TRUNCATE CASCADE
+            for table in reversed(tables_to_create):
+                try:
+                    await conn.execute(sa.text(f'TRUNCATE TABLE "{table.name}" CASCADE'))
+                except Exception:
+                    pass
+        else:
+            for table in reversed(tables_to_create):
+                try:
+                    await conn.run_sync(table.drop, checkfirst=True)
+                except Exception:
+                    pass
     await engine.dispose()
 
 

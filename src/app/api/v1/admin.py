@@ -9,8 +9,6 @@
 - 用户列表只返回非敏感字段(不含 password_hash),序列化由 schema 保证。
 """
 
-from __future__ import annotations
-
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query

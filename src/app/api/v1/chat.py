@@ -12,8 +12,6 @@
 - 会话管理接口复用 ``get_current_user``,并校验会话归属(防越权访问他人会话)。
 """
 
-from __future__ import annotations
-
 import json
 from datetime import datetime, timezone
 from typing import AsyncIterator
@@ -38,6 +36,7 @@ from app.core.exceptions import (
 )
 from app.core.logging import get_logger, set_request_context
 from app.models.user import User
+from app.schemas.chat import ChatRequest, MessageListResponse, SessionListResponse
 
 logger = get_logger(__name__)
 
@@ -160,7 +159,7 @@ async def _stream_dialogue(
     responses={200: {"content": {"text/event-stream": {}}}},
 )
 async def chat(
-    payload,  # ChatRequest
+    payload: ChatRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     memory_service=Depends(get_memory_service),
@@ -176,10 +175,6 @@ async def chat(
     响应头含 ``X-Accel-Buffering: no`` 提示 Nginx 不缓冲,保证流实时到达前端。
     """
     from app.repositories.session_repository import SessionRepository
-    from app.schemas.chat import ChatRequest
-
-    payload: ChatRequest = payload  # type: ignore[no-redef]
-
     # 注入日志上下文,便于追踪单次对话链路
     set_request_context(user_id=str(user.id), session_id=str(payload.session_id or ""))
 
@@ -244,7 +239,6 @@ async def list_sessions(
     自动按 user_id 过滤,无需前端传--鉴权已绑定 user。
     """
     from app.repositories.session_repository import SessionRepository
-    from app.schemas.chat import SessionListResponse
 
     repo = SessionRepository(db)
     sessions = await repo.list_by_user(user.id, limit=limit, offset=offset)
@@ -267,7 +261,6 @@ async def list_messages(
     """
     from app.repositories.message_repository import MessageRepository
     from app.repositories.session_repository import SessionRepository
-    from app.schemas.chat import MessageListResponse
 
     sess_repo = SessionRepository(db)
     session = await sess_repo.get_by_id(session_id)
